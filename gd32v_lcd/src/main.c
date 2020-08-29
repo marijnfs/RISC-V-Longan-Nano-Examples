@@ -23,16 +23,31 @@ void init_uart0(void) {
   usart_receive_config(USART0, USART_RECEIVE_ENABLE);
   usart_transmit_config(USART0, USART_TRANSMIT_ENABLE);
   usart_enable(USART0);
+}
 
+void init_eclic() {
+  eclic_global_interrupt_enable();
+  eclic_priority_group_set(ECLIC_PRIGROUP_LEVEL3_PRIO1);
+  eclic_irq_enable(USART0_IRQn, 1, 0);
+  // gd_eval_com_init(USART0);
   usart_interrupt_enable(USART0, USART_INT_RBNE);
 }
 
-// Code below written by Marijn Stollenga:
+volatile uint16_t usart_data = 0;
+volatile uint8_t data_received = 0;
+
+void USART0_IRQHandler(void) {
+  if (usart_interrupt_flag_get(USART0, USART_INT_FLAG_RBNE) != RESET) {
+
+    usart_data = usart_data_receive(USART0);
+    data_received = 1;
+  }
+}
 
 void draw_mandel() {
   int const width = 160;
   int const height = 80;
-  LCD_Address_Set(0, 0, width - 1, height - 1); //设置光标位置
+  LCD_Address_Set(0, 0, width - 1, height - 1);
 
   for (int y = 0; y < height; ++y)
     for (int x = 0; x < width; ++x) {
@@ -55,34 +70,32 @@ void draw_mandel() {
 
 void uart_test() {
   init_uart0();
+  init_eclic();
 
   gpio_init(GPIOA, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_1);
   gpio_init(GPIOA, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_2);
   gpio_bit_set(GPIOA, GPIO_PIN_1);
   gpio_bit_set(GPIOA, GPIO_PIN_2);
 
-    gpio_bit_reset(GPIOA, GPIO_PIN_2);
+  gpio_bit_reset(GPIOA, GPIO_PIN_2);
   while (1) {
-    while (usart_flag_get(USART0, USART_FLAG_RBNE) == RESET) {
-    }
-
-    uint16_t data = usart_data_receive(USART0);
-    gpio_bit_set(GPIOA, GPIO_PIN_2);
-
-    if (data == 0) {
-      gpio_bit_set(GPIOA, GPIO_PIN_1);
-      gpio_bit_set(GPIOA, GPIO_PIN_2);
-    } else if (data == 1) {
-      gpio_bit_reset(GPIOA, GPIO_PIN_1);
-      gpio_bit_set(GPIOA, GPIO_PIN_2);
-    } else if (data == 2) {
-      gpio_bit_set(GPIOA, GPIO_PIN_1);
-      gpio_bit_reset(GPIOA, GPIO_PIN_2);
-    } else if (data == 3) {
-      gpio_bit_reset(GPIOA, GPIO_PIN_1);
-      gpio_bit_reset(GPIOA, GPIO_PIN_2);
-    } else if (data == 100) {
-      draw_mandel();
+    if (data_received) {
+      data_received = 0;
+      if (usart_data == 0) {
+        gpio_bit_set(GPIOA, GPIO_PIN_1);
+        gpio_bit_set(GPIOA, GPIO_PIN_2);
+      } else if (usart_data == 1) {
+        gpio_bit_reset(GPIOA, GPIO_PIN_1);
+        gpio_bit_set(GPIOA, GPIO_PIN_2);
+      } else if (usart_data == 2) {
+        gpio_bit_set(GPIOA, GPIO_PIN_1);
+        gpio_bit_reset(GPIOA, GPIO_PIN_2);
+      } else if (usart_data == 3) {
+        gpio_bit_reset(GPIOA, GPIO_PIN_1);
+        gpio_bit_reset(GPIOA, GPIO_PIN_2);
+      } else if (usart_data == 100) {
+        draw_mandel();
+      }
     }
   }
 }
